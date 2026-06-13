@@ -1,0 +1,12 @@
+{
+  "source_pdf": "/tmp/CVSDrSimifutbol.pdf",
+  "total_rows": 497,
+  "mapped_rows": 492,
+  "counts_by_state": {
+    "California": 291,
+    "Texas": 185,
+    "Nevada": 19,
+    "Arizona": 1,
+    "Oklahoma": 1
+  }
+}
