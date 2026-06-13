@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import html as html_lib
 import json
 import re
 import time
@@ -17,11 +16,11 @@ from PyPDF2 import PdfReader
 
 
 PDF_PATH = Path("/tmp/CVSDrSimifutbol.pdf")
-OUT_DIR = Path("/Users/enriqueverduzco/Documents/ConsumeTracker/artifacts/dr-simi-stores")
-PAGES_DIR = Path("/Users/enriqueverduzco/Documents/ConsumeTracker/docs")
+OUT_DIR = Path("/Users/enriqueverduzco/Documents/DrSimiCVS/artifacts/dr-simi-stores")
+PAGES_DIR = Path("/Users/enriqueverduzco/Documents/DrSimiCVS/docs")
 CSV_PATH = OUT_DIR / "store_locations.csv"
 GEOJSON_PATH = OUT_DIR / "store_locations.geojson"
-HTML_PATH = OUT_DIR / "store_locations_map.html"
+HTML_PATH = OUT_DIR / "index.html"
 SUMMARY_PATH = OUT_DIR / "summary.json"
 CACHE_PATH = OUT_DIR / "geocode_cache.json"
 PAGES_INDEX_PATH = PAGES_DIR / "index.html"
@@ -195,20 +194,7 @@ def write_geojson(records: list[StoreRecord]) -> None:
 
 def write_html(records: list[StoreRecord]) -> None:
     geojson = json.loads(GEOJSON_PATH.read_text(encoding="utf-8"))
-    mapped_records = [record for record in records if record.geocode_status == "ok"]
-    list_items = "".join(
-        (
-            '<div class="item">'
-            f"<strong>Store {html_lib.escape(record.store_id)}</strong>"
-            '<a class="address-link" '
-            f'data-address="{html_lib.escape(record.matched_address or record.query, quote=True)}" '
-            'href="#" target="_blank" rel="noopener noreferrer">'
-            f"{html_lib.escape(record.matched_address or record.query)}"
-            "</a>"
-            "</div>"
-        )
-        for record in mapped_records
-    )
+    mapped_count = sum(1 for record in records if record.geocode_status == "ok")
     html = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -271,6 +257,35 @@ def write_html(records: list[StoreRecord]) -> None:
       background: rgba(20, 107, 58, 0.06);
       border-left: 4px solid var(--accent);
     }}
+    .search-wrap {{
+      margin-top: 18px;
+    }}
+    .search-label {{
+      display: block;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }}
+    .search-input {{
+      width: 100%;
+      border: 1px solid rgba(17, 32, 17, 0.18);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font: inherit;
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.88);
+    }}
+    .search-input:focus {{
+      outline: 2px solid rgba(20, 107, 58, 0.18);
+      border-color: var(--accent);
+    }}
+    .search-note {{
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }}
     .map-wrap {{
       padding: 0 24px 24px;
     }}
@@ -312,6 +327,11 @@ def write_html(records: list[StoreRecord]) -> None:
       max-height: 420px;
       overflow: auto;
       padding-right: 6px;
+    }}
+    .list-empty {{
+      padding: 18px 0 4px;
+      color: var(--muted);
+      font-size: 14px;
     }}
     .item {{
       padding: 10px 0;
@@ -359,7 +379,18 @@ def write_html(records: list[StoreRecord]) -> None:
       <section class="hero">
         <h1>Dr. Simi CVS Store Map</h1>
         <div class="stat">
-          <strong>{sum(1 for record in records if record.geocode_status == "ok")} mapped locations</strong>
+          <strong><span id="result-count">{mapped_count}</span> locations</strong>
+        </div>
+        <div class="search-wrap">
+          <label class="search-label" for="store-search">Search Stores</label>
+          <input
+            id="store-search"
+            class="search-input"
+            type="search"
+            placeholder="Search by address, city, state, or ZIP code"
+            autocomplete="off"
+          />
+          <div class="search-note">Search updates both the list and map markers.</div>
         </div>
       </section>
       <section class="map-wrap">
@@ -369,9 +400,7 @@ def write_html(records: list[StoreRecord]) -> None:
       </section>
       <details class="list-section">
         <summary class="list-toggle">Store List</summary>
-        <div class="list">
-          {list_items}
-        </div>
+        <div id="store-list" class="list"></div>
       </details>
     </main>
   </div>
@@ -383,6 +412,11 @@ def write_html(records: list[StoreRecord]) -> None:
   <script>
     const data = {json.dumps(geojson)};
     const isAppleDevice = /iPad|iPhone|iPod|Mac/.test(navigator.userAgent);
+    const defaultCenter = [34.05, -118.24];
+    const defaultZoom = 6;
+    const listRoot = document.getElementById("store-list");
+    const resultCount = document.getElementById("result-count");
+    const searchInput = document.getElementById("store-search");
 
     function mapsUrlFor(address) {{
       const encoded = encodeURIComponent(address);
@@ -391,17 +425,63 @@ def write_html(records: list[StoreRecord]) -> None:
         : `https://www.google.com/maps/search/?api=1&query=${{encoded}}`;
     }}
 
-    function configureMapLinks(root = document) {{
-      root.querySelectorAll(".address-link").forEach((link) => {{
-        const address = link.dataset.address;
-        if (!address) {{
-          return;
-        }}
-        link.href = mapsUrlFor(address);
-      }});
+    function normalizeText(value) {{
+      return (value || "").toLowerCase().replace(/\\s+/g, " ").trim();
     }}
 
-    configureMapLinks();
+    function featureAddress(feature) {{
+      const p = feature.properties || {{}};
+      return p.matched_address || p.query || "";
+    }}
+
+    function featureSearchText(feature) {{
+      const p = feature.properties || {{}};
+      return normalizeText([
+        p.store_id,
+        featureAddress(feature),
+        p.raw_address,
+        p.state,
+        p.zip_code
+      ].join(" "));
+    }}
+
+    function buildListItem(feature) {{
+      const p = feature.properties;
+      const address = featureAddress(feature);
+      const item = document.createElement("div");
+      item.className = "item";
+
+      const title = document.createElement("strong");
+      title.textContent = `Store ${{p.store_id}}`;
+
+      const link = document.createElement("a");
+      link.className = "address-link";
+      link.href = mapsUrlFor(address);
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = address;
+
+      item.appendChild(title);
+      item.appendChild(link);
+      return item;
+    }}
+
+    function renderList(features) {{
+      listRoot.replaceChildren();
+      if (!features.length) {{
+        const empty = document.createElement("div");
+        empty.className = "list-empty";
+        empty.textContent = "No stores match your search.";
+        listRoot.appendChild(empty);
+        return;
+      }}
+
+      const fragment = document.createDocumentFragment();
+      features.forEach((feature) => {{
+        fragment.appendChild(buildListItem(feature));
+      }});
+      listRoot.appendChild(fragment);
+    }}
 
     const map = L.map("map", {{ scrollWheelZoom: true }});
     L.tileLayer("https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png", {{
@@ -409,42 +489,72 @@ def write_html(records: list[StoreRecord]) -> None:
       attribution: "&copy; OpenStreetMap contributors"
     }}).addTo(map);
 
-    const markers = L.geoJSON(data, {{
-      pointToLayer: (feature, latlng) => L.circleMarker(latlng, {{
+    let markerLayer;
+
+    function buildMarkerLayer(features) {{
+      return L.geoJSON({{ type: "FeatureCollection", features }}, {{
+        pointToLayer: (feature, latlng) => L.circleMarker(latlng, {{
         radius: 5,
         color: "#0d4c28",
         weight: 1,
         fillColor: "#1f8f50",
         fillOpacity: 0.82
-      }}),
-      onEachFeature: (feature, layer) => {{
-        const p = feature.properties;
-        const address = p.matched_address || p.query;
-        const popup = document.createElement("div");
-        const title = document.createElement("strong");
-        title.textContent = `Store ${{p.store_id}}`;
+        }}),
+        onEachFeature: (feature, layer) => {{
+          const p = feature.properties;
+          const address = featureAddress(feature);
+          const popup = document.createElement("div");
+          const title = document.createElement("strong");
+          title.textContent = `Store ${{p.store_id}}`;
 
-        const link = document.createElement("a");
-        link.className = "address-link";
-        link.dataset.address = address;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = address;
+          const link = document.createElement("a");
+          link.className = "address-link";
+          link.href = mapsUrlFor(address);
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = address;
 
-        popup.appendChild(title);
-        popup.appendChild(document.createElement("br"));
-        popup.appendChild(link);
-        configureMapLinks(popup);
-        layer.bindPopup(popup);
-      }}
-    }}).addTo(map);
-
-    const bounds = markers.getBounds();
-    if (bounds.isValid()) {{
-      map.fitBounds(bounds.pad(0.08));
-    }} else {{
-      map.setView([34.05, -118.24], 6);
+          popup.appendChild(title);
+          popup.appendChild(document.createElement("br"));
+          popup.appendChild(link);
+          layer.bindPopup(popup);
+        }}
+      }});
     }}
+
+    function renderFeatures(features) {{
+      if (markerLayer) {{
+        map.removeLayer(markerLayer);
+      }}
+
+      markerLayer = buildMarkerLayer(features).addTo(map);
+      renderList(features);
+      resultCount.textContent = String(features.length);
+
+      const bounds = markerLayer.getBounds();
+      if (bounds.isValid()) {{
+        map.fitBounds(bounds.pad(0.08));
+      }} else {{
+        map.setView(defaultCenter, defaultZoom);
+      }}
+    }}
+
+    const allFeatures = data.features.map((feature) => ({{
+      ...feature,
+      properties: {{ ...feature.properties }},
+      _searchText: featureSearchText(feature)
+    }}));
+
+    function applySearch() {{
+      const term = normalizeText(searchInput.value);
+      const filtered = term
+        ? allFeatures.filter((feature) => feature._searchText.includes(term))
+        : allFeatures;
+      renderFeatures(filtered);
+    }}
+
+    searchInput.addEventListener("input", applySearch);
+    renderFeatures(allFeatures);
   </script>
 </body>
 </html>
