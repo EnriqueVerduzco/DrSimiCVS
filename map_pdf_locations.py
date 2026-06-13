@@ -358,10 +358,8 @@ def write_html(records: list[StoreRecord]) -> None:
     <main class="panel">
       <section class="hero">
         <h1>Dr. Simi Store Map</h1>
-        <p>Locations extracted from the supplied PDF and geocoded against the U.S. Census service.</p>
         <div class="stat">
           <strong>{sum(1 for record in records if record.geocode_status == "ok")} mapped locations</strong>
-          <span>{len(records)} rows extracted from the source list</span>
         </div>
       </section>
       <section class="map-wrap">
