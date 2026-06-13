@@ -214,7 +214,7 @@ def write_html(records: list[StoreRecord]) -> None:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dr. Simi Store Locations</title>
+  <title>Dr. Simi CVS Store Map</title>
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -357,7 +357,7 @@ def write_html(records: list[StoreRecord]) -> None:
   <div class="shell">
     <main class="panel">
       <section class="hero">
-        <h1>Dr. Simi Store Map</h1>
+        <h1>Dr. Simi CVS Store Map</h1>
         <div class="stat">
           <strong>{sum(1 for record in records if record.geocode_status == "ok")} mapped locations</strong>
         </div>
