@@ -240,15 +240,20 @@ def write_html(records: list[StoreRecord]) -> None:
       color: var(--ink);
     }}
     .shell {{
-      display: grid;
-      grid-template-columns: 340px 1fr;
-      min-height: 100vh;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px;
     }}
     .panel {{
-      padding: 24px;
       background: var(--panel);
       backdrop-filter: blur(8px);
-      border-right: 1px solid rgba(17, 32, 17, 0.08);
+      border: 1px solid rgba(17, 32, 17, 0.08);
+      border-radius: 24px;
+      box-shadow: 0 18px 48px rgba(17, 32, 17, 0.08);
+      overflow: hidden;
+    }}
+    .hero {{
+      padding: 24px 24px 18px;
     }}
     h1 {{
       margin: 0 0 8px;
@@ -266,9 +271,45 @@ def write_html(records: list[StoreRecord]) -> None:
       background: rgba(20, 107, 58, 0.06);
       border-left: 4px solid var(--accent);
     }}
+    .map-wrap {{
+      padding: 0 24px 24px;
+    }}
+    .map-frame {{
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(17, 32, 17, 0.12);
+      background: rgba(20, 107, 58, 0.05);
+    }}
+    .list-section {{
+      border-top: 1px solid rgba(17, 32, 17, 0.08);
+      background: rgba(255, 255, 255, 0.32);
+    }}
+    .list-toggle {{
+      list-style: none;
+      cursor: pointer;
+      padding: 18px 24px;
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }}
+    .list-toggle::-webkit-details-marker {{
+      display: none;
+    }}
+    .list-toggle::after {{
+      content: "+";
+      font-size: 22px;
+      line-height: 1;
+      color: var(--accent);
+    }}
+    .list-section[open] .list-toggle::after {{
+      content: "−";
+    }}
     .list {{
-      margin-top: 18px;
-      max-height: calc(100vh - 280px);
+      margin: 0;
+      padding: 0 24px 20px;
+      max-height: 420px;
       overflow: auto;
       padding-right: 6px;
     }}
@@ -293,34 +334,48 @@ def write_html(records: list[StoreRecord]) -> None:
       text-decoration: underline;
     }}
     #map {{
-      min-height: 100vh;
+      min-height: 62vh;
       width: 100%;
     }}
     @media (max-width: 900px) {{
-      .shell {{ grid-template-columns: 1fr; }}
-      .panel {{
-        border-right: 0;
-        border-bottom: 1px solid rgba(17, 32, 17, 0.08);
+      .shell {{
+        padding: 14px;
       }}
-      #map {{ min-height: 70vh; }}
+      .hero,
+      .map-wrap,
+      .list-toggle,
+      .list {{
+        padding-left: 16px;
+        padding-right: 16px;
+      }}
+      #map {{ min-height: 52vh; }}
       .list {{ max-height: none; }}
     }}
   </style>
 </head>
 <body>
   <div class="shell">
-    <aside class="panel">
-      <h1>Dr. Simi Store Map</h1>
-      <p>Locations extracted from the supplied PDF and geocoded against the U.S. Census service.</p>
-      <div class="stat">
-        <strong>{sum(1 for record in records if record.geocode_status == "ok")} mapped locations</strong>
-        <span>{len(records)} rows extracted from the source list</span>
-      </div>
-      <div class="list">
-        {list_items}
-      </div>
-    </aside>
-    <main id="map"></main>
+    <main class="panel">
+      <section class="hero">
+        <h1>Dr. Simi Store Map</h1>
+        <p>Locations extracted from the supplied PDF and geocoded against the U.S. Census service.</p>
+        <div class="stat">
+          <strong>{sum(1 for record in records if record.geocode_status == "ok")} mapped locations</strong>
+          <span>{len(records)} rows extracted from the source list</span>
+        </div>
+      </section>
+      <section class="map-wrap">
+        <div class="map-frame">
+          <div id="map"></div>
+        </div>
+      </section>
+      <details class="list-section">
+        <summary class="list-toggle">Store List</summary>
+        <div class="list">
+          {list_items}
+        </div>
+      </details>
+    </main>
   </div>
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
